@@ -8,7 +8,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable
 
-from PIL import Image, ImageDraw, ImageFilter, ImageFont
+try:
+    from PIL import Image, ImageDraw, ImageFilter, ImageFont
+except ImportError:  # Keep plugin/CLI discovery available for a clear setup error.
+    Image = ImageDraw = ImageFilter = ImageFont = None
 
 
 W = 1080
@@ -41,6 +44,13 @@ _FONT_BOLD = (
     "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
     "Arial Bold.ttf",
 )
+
+
+def _require_pillow() -> None:
+    if Image is None:
+        raise RuntimeError(
+            "WHOOP visual reports require Pillow>=10 in the Hermes Python environment"
+        )
 
 
 def _font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
@@ -408,6 +418,7 @@ RENDERERS = {
 
 def render_report_data(report_type: str, data: dict[str, Any], output_path: str | Path | None = None) -> str:
     """Render normalized report data and return an absolute PNG path."""
+    _require_pillow()
     if report_type not in RENDERERS:
         raise ValueError(f"Unknown WHOOP report type: {report_type}")
     if output_path is None:
