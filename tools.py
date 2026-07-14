@@ -477,5 +477,4 @@ def register_tools(ctx: Any) -> None:
             schema=schema,
             handler=lambda args, _handler=handler, **kwargs: _run(_handler, args),
             check_fn=_configured,
-            emoji="💪",
         )
