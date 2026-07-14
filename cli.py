@@ -9,12 +9,12 @@ from pathlib import Path
 
 try:
     from .client import WhoopClient
-    from .config import DEFAULT_CALLBACK_PATH, read_config, source_env
+    from .config import DEFAULT_CALLBACK_PATH, hermes_home, read_config, source_env
     from .oauth import create_authorization_url
     from .store import TokenSet, TokenStore
 except ImportError:  # pragma: no cover
     from client import WhoopClient
-    from config import DEFAULT_CALLBACK_PATH, read_config, source_env
+    from config import DEFAULT_CALLBACK_PATH, hermes_home, read_config, source_env
     from oauth import create_authorization_url
     from store import TokenSet, TokenStore
 
@@ -58,14 +58,17 @@ def _save_env(name: str, value: str) -> None:
 
 
 def _public_url() -> str:
-    env = source_env(Path.home() / ".hermes" / ".env")
+    env = source_env(hermes_home() / ".env")
     configured = env.get("INKBOX_PUBLIC_URL", "").rstrip("/")
     if configured:
         return configured
-    state_path = Path.home() / ".hermes" / "inkbox_identity_state.json"
+    state_path = hermes_home() / "inkbox_identity_state.json"
     if state_path.exists():
         try:
             state = json.loads(state_path.read_text(encoding="utf-8"))
+            public_url = str(state.get("public_url") or "").strip().rstrip("/")
+            if public_url:
+                return public_url
             host = str(state.get("tunnel_public_host") or "").strip()
             if host:
                 return f"https://{host}"

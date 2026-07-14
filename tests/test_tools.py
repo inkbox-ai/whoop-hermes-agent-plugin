@@ -54,7 +54,5 @@ def test_all_manifest_tools_are_registered():
 
     tools.register_tools(Context())
     assert len(calls) == 16
-    assert {call["name"] for call in calls} == {
-        definition[0] for definition in tools.TOOL_DEFINITIONS
-    }
+    assert {call["name"] for call in calls} == {definition[0] for definition in tools.TOOL_DEFINITIONS}
     assert all(call["schema"]["name"] == call["name"] for call in calls)
