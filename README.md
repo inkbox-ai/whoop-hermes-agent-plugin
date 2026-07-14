@@ -1,4 +1,21 @@
-# WHOOP Coach for Hermes + Inkbox
+<h1>WHOOP Coach for Hermes + Inkbox</h1>
+
+<img src="assets/whoop_inkbox_agent.png" alt="WHOOP Coach, powered by Inkbox" width="200" align="left">
+
+<p>
+  <br><br>
+  <b>Turn your WHOOP data into an agent that actually reaches you:</b><br>
+  official Recovery, Sleep, Strain, and workout data; event-driven coaching; and visual reports over iMessage.<br>
+  Powered by Hermes + Inkbox without relying on WHOOP's private Coach API.
+</p>
+
+<p>
+  <code>Recovery</code> · <code>Sleep</code> · <code>Workouts</code> · <code>Visual Reports</code> · <code>iMessage</code> · <code>Webhooks</code>
+</p>
+
+<br clear="left">
+
+---
 
 An end-to-end Hermes plugin that gives an agent official WHOOP data tools,
 verified WHOOP webhook events, polished health-report cards, and proactive
