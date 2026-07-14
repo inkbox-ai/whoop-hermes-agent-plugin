@@ -44,7 +44,15 @@ def _request(
     timeout: float = 20,
 ) -> Any:
     body = urlencode({k: v for k, v in (form or {}).items() if v is not None}).encode() if form else None
-    request_headers = {"Accept": "application/json", **(headers or {})}
+    # WHOOP's Cloudflare configuration rejects urllib's default
+    # ``Python-urllib/x.y`` signature with Error 1010 before the request reaches
+    # the OAuth/API service. Identify this integration as an application client
+    # on every request instead of inheriting that blocked default.
+    request_headers = {
+        "Accept": "application/json",
+        "User-Agent": "whoop-hermes-agent-plugin/0.1",
+        **(headers or {}),
+    }
     if form is not None:
         request_headers["Content-Type"] = "application/x-www-form-urlencoded"
     request = Request(url, data=body, headers=request_headers, method=method.upper())

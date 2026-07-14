@@ -7,6 +7,30 @@ from config import WhoopConfig
 from store import TokenSet, TokenStore
 
 
+def test_request_uses_application_user_agent(monkeypatch):
+    captured = {}
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def read(self):
+            return b"{}"
+
+    def fake_urlopen(request, timeout):
+        captured["request"] = request
+        captured["timeout"] = timeout
+        return Response()
+
+    monkeypatch.setattr(client_mod, "urlopen", fake_urlopen)
+
+    assert client_mod._request("GET", "https://api.prod.whoop.com/test") == {}
+    assert captured["request"].get_header("User-agent") == "whoop-hermes-agent-plugin/0.1"
+
+
 def _config(tmp_path: Path) -> WhoopConfig:
     return WhoopConfig(
         client_id="client",
