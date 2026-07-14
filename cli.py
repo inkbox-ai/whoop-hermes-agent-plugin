@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 import json
+import importlib.util
 import os
+import shutil
+import subprocess
+import sys
 import webbrowser
 from pathlib import Path
 
@@ -58,6 +62,66 @@ def _save_env(name: str, value: str) -> None:
         rows.append(replacement)
     path.write_text("\n".join(rows) + "\n", encoding="utf-8")
     path.chmod(0o600)
+
+
+def _ensure_visual_dependency() -> None:
+    """Install Pillow into the Python environment that is running Hermes."""
+    if importlib.util.find_spec("PIL") is not None:
+        return
+    print("Installing WHOOP visual-report dependency into the Hermes environment...")
+    uv = shutil.which("uv")
+    command = (
+        [uv, "pip", "install", "--python", sys.executable, "Pillow>=10"]
+        if uv
+        else [sys.executable, "-m", "pip", "install", "Pillow>=10"]
+    )
+    try:
+        subprocess.run(command, check=True)
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise SystemExit(
+            "Could not install Pillow>=10. Install it in the Hermes Python environment and rerun setup."
+        ) from exc
+
+
+def _active_imessage_conversations() -> list[dict]:
+    """Read active Inkbox iMessage conversations from the already-loaded companion plugin."""
+    module = sys.modules.get("hermes_plugins.inkbox.tools")
+    list_conversations = getattr(module, "inkbox_list_imessage_conversations", None)
+    if not callable(list_conversations):
+        return []
+    try:
+        payload = json.loads(list_conversations({"limit": 100}))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return []
+    return [
+        row
+        for row in payload.get("conversations", [])
+        if isinstance(row, dict) and row.get("id") and row.get("assignment_status") == "active"
+    ]
+
+
+def _configure_home_channel(explicit: str = "") -> str:
+    selected = str(explicit or "").strip()
+    if selected:
+        _save_env("WHOOP_HOME_CHANNEL", selected)
+        return selected
+    existing = read_config().home_channel
+    if existing:
+        return existing
+    conversations = _active_imessage_conversations()
+    if len(conversations) == 1:
+        selected = str(conversations[0]["id"])
+        _save_env("WHOOP_HOME_CHANNEL", selected)
+        print(f"Using the sole active Inkbox iMessage conversation as WHOOP_HOME_CHANNEL: {selected}")
+        return selected
+    if len(conversations) > 1:
+        options = ", ".join(str(row["id"]) for row in conversations)
+        print(f"Multiple active iMessage conversations found: {options}")
+        print("Rerun with --home-channel <conversation-id> to choose proactive delivery.")
+    else:
+        print("No active Inkbox iMessage conversation found; OAuth can continue without outreach.")
+        print("Connect/message the Inkbox identity, then rerun setup with --home-channel <conversation-id>.")
+    return ""
 
 
 def _public_url() -> str:
@@ -158,12 +222,12 @@ def setup_argparse(subparser) -> None:
 
 
 def _setup(args) -> None:
+    _ensure_visual_dependency()
     if args.import_env:
         if not args.import_env.exists():
             raise SystemExit(f"Import file does not exist: {args.import_env}")
         _import_existing(args.import_env)
-    if args.home_channel:
-        _save_env("WHOOP_HOME_CHANNEL", str(args.home_channel).strip())
+    _configure_home_channel(str(args.home_channel or ""))
     urls = _urls()
     cfg = read_config()
     if urls["redirect_uri"] and cfg.redirect_uri != urls["redirect_uri"]:
