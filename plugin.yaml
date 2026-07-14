@@ -1,0 +1,41 @@
+name: whoop
+label: WHOOP Coach
+kind: backend
+version: 0.1.0
+description: Official WHOOP API tools, OAuth, verified webhooks, and proactive coaching for Hermes + Inkbox.
+author: Inkbox
+requires_env: []
+optional_env:
+  - name: WHOOP_CLIENT_ID
+    description: WHOOP OAuth application client ID.
+    secret: false
+  - name: WHOOP_CLIENT_SECRET
+    description: WHOOP OAuth application client secret.
+    secret: true
+  - name: WHOOP_REDIRECT_URI
+    description: OAuth callback on the Inkbox agent tunnel.
+    secret: false
+  - name: WHOOP_HOME_CHANNEL
+    description: Inkbox contact or iMessage conversation the coach should notify.
+    secret: false
+  - name: WHOOP_TIMEZONE
+    description: IANA timezone used for quiet hours and daily summaries.
+    secret: false
+provides_tools:
+  - whoop_get_profile
+  - whoop_get_body_measurements
+  - whoop_list_cycles
+  - whoop_get_cycle
+  - whoop_get_cycle_sleep
+  - whoop_get_cycle_recovery
+  - whoop_list_recoveries
+  - whoop_list_sleeps
+  - whoop_get_sleep
+  - whoop_list_workouts
+  - whoop_get_workout
+  - whoop_map_activity_id
+  - whoop_get_today
+  - whoop_summarize_period
+  - whoop_compare_workouts
+  - whoop_process_event
+
