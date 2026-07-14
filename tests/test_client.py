@@ -44,6 +44,7 @@ def _config(tmp_path: Path) -> WhoopConfig:
         timezone="UTC",
         quiet_hours_start="23:00",
         quiet_hours_end="07:00",
+        recaps_respect_quiet_hours=True,
         state_dir=tmp_path / "whoop",
     )
 

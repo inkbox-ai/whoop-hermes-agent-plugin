@@ -32,6 +32,7 @@ hermes plugins install inkbox-ai/whoop-hermes-agent-plugin --enable
 hermes gateway restart
 hermes whoop setup --import-env /path/to/existing/.env --home-channel <conversation-id>
 hermes whoop doctor
+hermes whoop automations install
 ```
 
 The WHOOP plugin registers its verifier and OAuth callback in memory when
@@ -61,6 +62,7 @@ redirect and webhook URLs is a one-time manual dashboard action.
 - `hermes whoop doctor`
 - `hermes whoop status`
 - `hermes whoop webhook-url`
+- `hermes whoop automations install|status|remove`
 - `hermes whoop disconnect`
 
 OAuth tokens live in `~/.hermes/whoop/tokens.json` with mode `0600`. The WHOOP
@@ -78,15 +80,24 @@ The plugin covers every supported read endpoint for an authenticated member:
 - Workout list/detail
 - Legacy activity-ID mapping
 - Higher-level today, period-summary, workout-comparison, and webhook-processing tools
+- Four deterministic visual templates through `whoop_render_report`: sleep
+  phases, combined post-sleep recovery, workout/HR-zone summary, and daily recap
 
 OAuth revocation is intentionally a confirmed CLI command rather than an
 agent-callable tool.
 
 ## Event policy
 
-- Scored workout updates may produce one concise recap.
+- The automation installer creates one idempotent no-agent cron job at
+  `0 23 * * *` in `WHOOP_TIMEZONE` (11:00 PM America/Los_Angeles by default).
+  It renders and delivers the daily card directly, so there is no model/tool
+  approval step or extra cron wrapper message.
+- Scored `workout.updated` webhooks produce one workout visual recap.
 - Sleep updates normally wait for the corresponding Recovery event.
-- Recovery updates may produce one combined morning briefing.
+- Scored `recovery.updated` webhooks produce one combined post-sleep visual;
+  using Recovery avoids sending an incomplete sleep card and then a duplicate.
+- iMessage coaching can deliver polished native PNG reports without exposing a
+  local path or double-sending a text confirmation.
 - Deleted, duplicate, and unscored records remain silent.
 - Webhooks never trigger calls. Voice is reserved for a separately scheduled,
   explicitly configured escalation.

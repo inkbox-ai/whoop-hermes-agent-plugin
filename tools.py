@@ -12,10 +12,12 @@ try:
     from .client import WhoopClient, WhoopError
     from .config import read_config
     from .store import EventStore
+    from .visuals import local_datetime_label, render_report_data
 except ImportError:  # pragma: no cover
     from client import WhoopClient, WhoopError
     from config import read_config
     from store import EventStore
+    from visuals import local_datetime_label, render_report_data
 
 
 def _json(payload: Any) -> str:
@@ -191,6 +193,251 @@ def compare_workouts(args: dict[str, Any]) -> Any:
     }
 
 
+def _parse_timestamp(value: Any) -> datetime | None:
+    try:
+        return datetime.fromisoformat(str(value or "").replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+
+
+def _duration_seconds(record: dict[str, Any]) -> float:
+    start = _parse_timestamp(record.get("start"))
+    end = _parse_timestamp(record.get("end"))
+    return max(0.0, (end - start).total_seconds()) if start and end else 0.0
+
+
+def _sleep_phases(sleep: dict[str, Any]) -> list[dict[str, Any]]:
+    stage = ((sleep.get("score") or {}).get("stage_summary") or {})
+    return [
+        {"label": "Light", "milliseconds": _value_number(stage, "total_light_sleep_time_milli")},
+        {"label": "Deep", "milliseconds": _value_number(stage, "total_slow_wave_sleep_time_milli")},
+        {"label": "REM", "milliseconds": _value_number(stage, "total_rem_sleep_time_milli")},
+        {"label": "Awake", "milliseconds": _value_number(stage, "total_awake_time_milli")},
+    ]
+
+
+def _value_number(payload: dict[str, Any], key: str, default: float = 0.0) -> float:
+    value = payload.get(key)
+    return float(value) if isinstance(value, (int, float)) else default
+
+
+def _normalize_sleep(sleep: dict[str, Any], recovery: dict[str, Any] | None) -> dict[str, Any]:
+    if sleep.get("score_state") not in (None, "SCORED"):
+        raise ValueError("The selected WHOOP sleep is not scored yet")
+    sleep_score = sleep.get("score") if isinstance(sleep.get("score"), dict) else {}
+    recovery_score = (
+        recovery.get("score") if isinstance((recovery or {}).get("score"), dict) else {}
+    )
+    stage = sleep_score.get("stage_summary") if isinstance(sleep_score.get("stage_summary"), dict) else {}
+    phases = _sleep_phases(sleep)
+    total_in_bed = _value_number(stage, "total_in_bed_time_milli")
+    if not total_in_bed:
+        total_in_bed = sum(row["milliseconds"] for row in phases)
+    return {
+        "sleep_id": str(sleep.get("id") or ""),
+        "total_in_bed_milli": total_in_bed,
+        "sleep_efficiency": _value_number(sleep_score, "sleep_efficiency_percentage"),
+        "sleep_performance": _value_number(sleep_score, "sleep_performance_percentage"),
+        "sleep_consistency": _value_number(sleep_score, "sleep_consistency_percentage"),
+        "disturbances": int(_value_number(stage, "disturbance_count")),
+        "phases": phases,
+        "recovery_score": _value_number(recovery_score, "recovery_score"),
+        "hrv": _value_number(recovery_score, "hrv_rmssd_milli"),
+        "rhr": _value_number(recovery_score, "resting_heart_rate"),
+        "spo2": _value_number(recovery_score, "spo2_percentage"),
+        "skin_temp": _value_number(recovery_score, "skin_temp_celsius"),
+    }
+
+
+def _normalize_workout(workout: dict[str, Any]) -> dict[str, Any]:
+    if workout.get("score_state") not in (None, "SCORED"):
+        raise ValueError("The selected WHOOP workout is not scored yet")
+    score = workout.get("score") if isinstance(workout.get("score"), dict) else {}
+    zones = score.get("zone_durations") if isinstance(score.get("zone_durations"), dict) else {}
+    sport_name = str(workout.get("sport_name") or "activity")
+    label = local_datetime_label(str(workout.get("start") or ""), str(workout.get("timezone_offset") or ""))
+    return {
+        "workout_id": str(workout.get("id") or ""),
+        "title": f"{sport_name.replace('-', ' ').title()} summary",
+        "subtitle": f"Latest logged activity • {label}" if label else "Latest logged activity",
+        "sport_name": sport_name,
+        "duration_second": _duration_seconds(workout),
+        "strain": _value_number(score, "strain"),
+        "average_heart_rate": _value_number(score, "average_heart_rate"),
+        "max_heart_rate": _value_number(score, "max_heart_rate"),
+        "kilojoule": _value_number(score, "kilojoule"),
+        "distance_meter": score.get("distance_meter") if isinstance(score.get("distance_meter"), (int, float)) else None,
+        "altitude_gain_meter": score.get("altitude_gain_meter") if isinstance(score.get("altitude_gain_meter"), (int, float)) else None,
+        "percent_recorded": score.get("percent_recorded") if isinstance(score.get("percent_recorded"), (int, float)) else None,
+        "zones_milli": [_value_number(zones, f"zone_{name}_milli") for name in ("zero", "one", "two", "three", "four", "five")],
+    }
+
+
+def _latest_main_sleep(client: WhoopClient, sleep_id: str = "") -> dict[str, Any]:
+    if sleep_id:
+        return client.get(f"v2/activity/sleep/{sleep_id}")
+    sleeps = client.collection("v2/activity/sleep", limit=10).get("records", [])
+    sleep = next((row for row in sleeps if not row.get("nap")), None)
+    if not sleep:
+        raise ValueError("WHOOP returned no main sleep to visualize")
+    return sleep
+
+
+def _matching_recovery(client: WhoopClient, sleep_id: str) -> dict[str, Any] | None:
+    recoveries = client.collection("v2/recovery", limit=25).get("records", [])
+    return next((row for row in recoveries if str(row.get("sleep_id") or "") == sleep_id), None)
+
+
+def _visual_date_window(value: str) -> tuple[datetime, datetime, str]:
+    cfg = read_config()
+    try:
+        zone = ZoneInfo(cfg.timezone)
+    except Exception:
+        zone = timezone.utc
+    if value:
+        day = datetime.strptime(value, "%Y-%m-%d").date()
+    else:
+        day = datetime.now(zone).date()
+    start_local = datetime.combine(day, datetime.min.time(), tzinfo=zone)
+    end_local = start_local + timedelta(days=1)
+    return start_local.astimezone(timezone.utc), end_local.astimezone(timezone.utc), day.isoformat()
+
+
+def _configured_timezone():
+    try:
+        return ZoneInfo(read_config().timezone)
+    except Exception:
+        return timezone.utc
+
+
+def _daily_coaching(recovery: float, strain: float, sleep: float) -> tuple[str, str, str]:
+    if recovery >= 67 and strain >= 14:
+        return (
+            "Green engine. Orange workload.",
+            "Strong readiness, but the day stacked heavy — refuel and protect sleep.",
+            "End-of-day move: eat, hydrate, downshift, sleep.",
+        )
+    if recovery < 34:
+        return (
+            "Recovery was the limiter.",
+            "Keep the load easy and give tonight's sleep a real chance to work.",
+            "Next move: recover, hydrate, and get to bed on time.",
+        )
+    if sleep < 70:
+        return (
+            "Sleep debt is driving the day.",
+            "Keep intensity controlled and prioritize a longer sleep window tonight.",
+            "Next move: downshift early and protect bedtime.",
+        )
+    return (
+        "A balanced day on the books.",
+        "Readiness and workload stayed manageable — keep the recovery routine steady.",
+        "Next move: refuel, hydrate, and protect the next sleep window.",
+    )
+
+
+def render_visual_report(args: dict[str, Any]) -> Any:
+    report_type = str(args.get("report_type") or "").strip()
+    if report_type not in {"sleep_phases", "post_sleep", "workout", "daily_recap"}:
+        raise ValueError("report_type must be sleep_phases, post_sleep, workout, or daily_recap")
+    client = WhoopClient()
+
+    if report_type in {"sleep_phases", "post_sleep"}:
+        sleep = _latest_main_sleep(client, str(args.get("sleep_id") or "").strip())
+        recovery = _matching_recovery(client, str(sleep.get("id") or ""))
+        normalized = _normalize_sleep(sleep, recovery)
+        source = {"sleep_id": normalized["sleep_id"], "recovery_found": recovery is not None}
+    elif report_type == "workout":
+        workout_id = str(args.get("workout_id") or "").strip()
+        if workout_id:
+            workout = client.get(f"v2/activity/workout/{workout_id}")
+        else:
+            workouts = client.collection("v2/activity/workout", limit=25).get("records", [])
+            sport_name = str(args.get("sport_name") or "").strip().lower()
+            if sport_name:
+                workouts = [
+                    row
+                    for row in workouts
+                    if str(row.get("sport_name") or "").strip().lower() == sport_name
+                ]
+            if not workouts:
+                raise ValueError("WHOOP returned no matching workout to visualize")
+            workout = workouts[0]
+        normalized = _normalize_workout(workout)
+        source = {"workout_id": normalized["workout_id"], "sport_name": normalized["sport_name"]}
+    else:
+        start, end, day = _visual_date_window(str(args.get("date") or "").strip())
+        query = {
+            "start": start.isoformat().replace("+00:00", "Z"),
+            "end": end.isoformat().replace("+00:00", "Z"),
+            "limit": 25,
+        }
+        cycles = client.collection("v2/cycle", **query).get("records", [])
+        sleeps = client.collection("v2/activity/sleep", **query).get("records", [])
+        recoveries = client.collection("v2/recovery", **query).get("records", [])
+        workouts = client.collection("v2/activity/workout", **query).get("records", [])
+        cycle = cycles[0] if cycles else {}
+        sleep: dict[str, Any] = {}
+        recovery: dict[str, Any] = {}
+        if cycle.get("id") is not None:
+            try:
+                sleep = client.get(f"v2/cycle/{int(cycle['id'])}/sleep")
+                recovery = client.get(f"v2/cycle/{int(cycle['id'])}/recovery")
+            except (WhoopError, TypeError, ValueError):
+                sleep = {}
+                recovery = {}
+        if not sleep:
+            sleep = next((row for row in sleeps if not row.get("nap")), {})
+        if not recovery:
+            recovery = next(
+                (
+                    row
+                    for row in recoveries
+                    if str(row.get("sleep_id") or "") == str(sleep.get("id") or "")
+                ),
+                recoveries[0] if recoveries else {},
+            )
+        sleep_data = _normalize_sleep(sleep, recovery)
+        cycle_score = cycle.get("score") if isinstance(cycle.get("score"), dict) else {}
+        recovery_score = float(sleep_data.get("recovery_score") or 0)
+        strain = _value_number(cycle_score, "strain")
+        sleep_performance = float(sleep_data.get("sleep_performance") or 0)
+        coach_read, next_action, footer = _daily_coaching(recovery_score, strain, sleep_performance)
+        normalized = {
+            **sleep_data,
+            "title": f"{start.astimezone(_configured_timezone()).strftime('%A')} recap",
+            "subtitle": (
+                f"{datetime.strptime(day, '%Y-%m-%d').strftime('%b')} "
+                f"{datetime.strptime(day, '%Y-%m-%d').day} • end-of-day WHOOP snapshot"
+            ),
+            "strain": strain,
+            "max_hr": _value_number(cycle_score, "max_heart_rate"),
+            "calories": _value_number(cycle_score, "kilojoule") / 4.184,
+            "workouts": [_normalize_workout(row) for row in workouts],
+            "coach_read": coach_read,
+            "next_action": next_action,
+            "footer": footer,
+        }
+        source = {
+            "date": day,
+            "cycle_id": cycle.get("id"),
+            "sleep_id": sleep.get("id"),
+            "workout_ids": [row.get("id") for row in workouts],
+        }
+
+    media_path = render_report_data(report_type, normalized)
+    return {
+        "report_type": report_type,
+        "media_path": media_path,
+        "media_directive": f"MEDIA:{media_path}",
+        "source": source,
+        "delivery": (
+            "For the current Inkbox iMessage thread, include media_directive in one normal reply. "
+            "Use inkbox_send_imessage(mediaPaths=[media_path]) only for a different conversation."
+        ),
+    }
+
+
 def process_event(args: dict[str, Any]) -> Any:
     event_type = str(args.get("event_type") or args.get("type") or "").strip()
     resource_id = str(args.get("resource_id") or args.get("id") or "").strip()
@@ -225,8 +472,9 @@ def process_event(args: dict[str, Any]) -> Any:
             "resource_id": resource_id,
             "workout": workout,
             "recommended_action": (
-                "If score_state is SCORED, send one concise workout recap with strain, average/max HR, "
-                "and heart-rate-zone durations. Otherwise send nothing."
+                "If score_state is SCORED and outreach_policy allows it, call whoop_render_report with "
+                "report_type='workout' and this resource_id, then send media_path exactly once to the "
+                "home iMessage conversation. Otherwise send nothing."
             ),
         }
     elif event_type == "sleep.updated":
@@ -251,8 +499,9 @@ def process_event(args: dict[str, Any]) -> Any:
             "recovery": recovery,
             "sleep": sleep,
             "recommended_action": (
-                "When both records are scored, send one morning briefing covering Recovery, HRV, resting HR, "
-                "sleep performance, sleep need, and a conservative training suggestion."
+                "When both records are scored and outreach_policy allows it, call whoop_render_report with "
+                "report_type='post_sleep' and this resource_id as sleep_id, then send media_path exactly "
+                "once to the home iMessage conversation. Otherwise send nothing."
             ),
         }
     if version and store.seen_version(event_type, resource_id, version):
@@ -262,6 +511,24 @@ def process_event(args: dict[str, Any]) -> Any:
             "event_type": event_type,
             "resource_id": resource_id,
             "reason": "This resource version was already processed.",
+        }
+    outreach_kind = None
+    if event_type == "workout.updated" and result["workout"].get("score_state") == "SCORED":
+        outreach_kind = "workout_recap"
+    elif (
+        event_type == "recovery.updated"
+        and (result.get("recovery") or {}).get("score_state") == "SCORED"
+        and result["sleep"].get("score_state") == "SCORED"
+    ):
+        outreach_kind = "sleep_recap"
+    if outreach_kind and not store.claim_outreach(outreach_kind, resource_id):
+        store.mark_version(event_type, resource_id, version)
+        store.mark(trace_id, event_type, resource_id)
+        return {
+            "duplicate": True,
+            "event_type": event_type,
+            "resource_id": resource_id,
+            "reason": "A proactive recap was already claimed for this resource.",
         }
     cfg = read_config()
     try:
@@ -276,7 +543,10 @@ def process_event(args: dict[str, Any]) -> Any:
         "timezone": cfg.timezone,
         "quiet_hours": {"start": start, "end": end},
         "currently_quiet": in_quiet_hours,
-        "may_message_now": bool(cfg.home_channel and not in_quiet_hours),
+        "may_message_now": bool(
+            cfg.home_channel and (not in_quiet_hours or not cfg.recaps_respect_quiet_hours)
+        ),
+        "recaps_respect_quiet_hours": cfg.recaps_respect_quiet_hours,
         "may_call_from_webhook": False,
     }
     store.mark_version(event_type, resource_id, version)
@@ -438,6 +708,43 @@ TOOL_DEFINITIONS: tuple[tuple[str, dict[str, Any], Callable[[dict[str, Any]], An
             },
         ),
         compare_workouts,
+    ),
+    (
+        "whoop_render_report",
+        _schema(
+            "whoop_render_report",
+            (
+                "Render a polished PNG from live WHOOP data. Returns a media_path and MEDIA: directive; "
+                "use the directive in the current Inkbox iMessage reply so the attachment is sent once."
+            ),
+            {
+                "type": "object",
+                "properties": {
+                    "report_type": {
+                        "type": "string",
+                        "enum": ["sleep_phases", "post_sleep", "workout", "daily_recap"],
+                    },
+                    "sleep_id": {
+                        "type": "string",
+                        "description": "Optional WHOOP sleep UUID for sleep reports; defaults to latest main sleep.",
+                    },
+                    "workout_id": {
+                        "type": "string",
+                        "description": "Optional WHOOP workout UUID; defaults to latest matching workout.",
+                    },
+                    "sport_name": {
+                        "type": "string",
+                        "description": "Optional exact sport filter when rendering the latest workout.",
+                    },
+                    "date": {
+                        "type": "string",
+                        "description": "Optional local YYYY-MM-DD for daily_recap; defaults to today.",
+                    },
+                },
+                "required": ["report_type"],
+            },
+        ),
+        render_visual_report,
     ),
     (
         "whoop_process_event",

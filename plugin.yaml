@@ -27,6 +27,9 @@ optional_env:
   - name: WHOOP_QUIET_HOURS_END
     description: Local 24-hour end time for automatic outreach suppression.
     secret: false
+  - name: WHOOP_RECAPS_RESPECT_QUIET_HOURS
+    description: Whether requested workout and sleep recaps wait for quiet hours to end.
+    secret: false
 provides_tools:
   - whoop_get_profile
   - whoop_get_body_measurements
@@ -43,4 +46,5 @@ provides_tools:
   - whoop_get_today
   - whoop_summarize_period
   - whoop_compare_workouts
+  - whoop_render_report
   - whoop_process_event

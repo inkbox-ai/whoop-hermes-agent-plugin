@@ -39,3 +39,5 @@ def test_event_store_deduplicates_trace_ids(tmp_path):
     assert not store.seen_version("workout.updated", "workout", "v1")
     store.mark_version("workout.updated", "workout", "v1")
     assert store.seen_version("workout.updated", "workout", "v1")
+    assert store.claim_outreach("workout_recap", "workout") is True
+    assert store.claim_outreach("workout_recap", "workout") is False

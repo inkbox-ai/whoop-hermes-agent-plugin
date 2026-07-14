@@ -97,6 +97,11 @@ class EventStore:
                 "event_type TEXT NOT NULL, resource_id TEXT NOT NULL, version TEXT NOT NULL, "
                 "processed_at REAL NOT NULL, PRIMARY KEY(event_type, resource_id, version))"
             )
+            db.execute(
+                "CREATE TABLE IF NOT EXISTS outreach ("
+                "kind TEXT NOT NULL, resource_id TEXT NOT NULL, claimed_at REAL NOT NULL, "
+                "PRIMARY KEY(kind, resource_id))"
+            )
 
     def _connect(self) -> sqlite3.Connection:
         db = sqlite3.connect(self.path, timeout=5)
@@ -146,3 +151,15 @@ class EventStore:
                 "DELETE FROM resource_versions WHERE processed_at < ?",
                 (time.time() - 90 * 86400,),
             )
+
+    def claim_outreach(self, kind: str, resource_id: str) -> bool:
+        """Atomically claim one proactive recap for a WHOOP resource."""
+        if not kind or not resource_id:
+            return False
+        with self._connect() as db:
+            cursor = db.execute(
+                "INSERT OR IGNORE INTO outreach(kind,resource_id,claimed_at) VALUES(?,?,?)",
+                (kind, resource_id, time.time()),
+            )
+            db.execute("DELETE FROM outreach WHERE claimed_at < ?", (time.time() - 180 * 86400,))
+        return cursor.rowcount == 1

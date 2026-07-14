@@ -1,0 +1,4 @@
+interface:
+  display_name: "WHOOP Visual Reports"
+  short_description: "Render polished WHOOP health report cards"
+  default_prompt: "Use $whoop-visual-reports to render a polished visual report from my WHOOP data."

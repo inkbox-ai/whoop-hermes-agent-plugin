@@ -1,0 +1,14 @@
+{
+  "title": "Run summary",
+  "subtitle": "Template verification",
+  "sport_name": "running",
+  "duration_second": 1500,
+  "distance_meter": 5000,
+  "strain": 11.8,
+  "average_heart_rate": 160,
+  "max_heart_rate": 182,
+  "kilojoule": 1300,
+  "altitude_gain_meter": 125,
+  "percent_recorded": 0.998,
+  "zones_milli": [0, 30000, 150000, 700000, 600000, 20000]
+}

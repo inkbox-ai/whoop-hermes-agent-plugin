@@ -38,6 +38,11 @@ def env_value(name: str, default: str = "") -> str:
     return os.getenv(name) or _env_file_values().get(name, default)
 
 
+def env_bool(name: str, default: bool) -> bool:
+    value = env_value(name, "true" if default else "false").strip().lower()
+    return value not in {"0", "false", "no", "off"}
+
+
 @dataclass(frozen=True)
 class WhoopConfig:
     client_id: str
@@ -51,6 +56,7 @@ class WhoopConfig:
     timezone: str
     quiet_hours_start: str
     quiet_hours_end: str
+    recaps_respect_quiet_hours: bool
     state_dir: Path
 
     @property
@@ -72,6 +78,7 @@ def read_config() -> WhoopConfig:
         timezone=env_value("WHOOP_TIMEZONE", "America/Los_Angeles"),
         quiet_hours_start=env_value("WHOOP_QUIET_HOURS_START", "23:00"),
         quiet_hours_end=env_value("WHOOP_QUIET_HOURS_END", "07:00"),
+        recaps_respect_quiet_hours=env_bool("WHOOP_RECAPS_RESPECT_QUIET_HOURS", True),
         state_dir=state_dir,
     )
 

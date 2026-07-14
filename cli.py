@@ -8,11 +8,13 @@ import webbrowser
 from pathlib import Path
 
 try:
+    from .automations import automation_status, install_automations, remove_automations
     from .client import WhoopClient
     from .config import DEFAULT_CALLBACK_PATH, hermes_home, read_config, source_env
     from .oauth import create_authorization_url
     from .store import TokenSet, TokenStore
 except ImportError:  # pragma: no cover
+    from automations import automation_status, install_automations, remove_automations
     from client import WhoopClient
     from config import DEFAULT_CALLBACK_PATH, hermes_home, read_config, source_env
     from oauth import create_authorization_url
@@ -29,6 +31,7 @@ IMPORT_NAMES = (
     "WHOOP_TOKEN_URL",
     "WHOOP_TIMEZONE",
     "WHOOP_HOME_CHANNEL",
+    "WHOOP_RECAPS_RESPECT_QUIET_HOURS",
 )
 
 
@@ -145,6 +148,10 @@ def setup_argparse(subparser) -> None:
     subs.add_parser("doctor", help="Validate WHOOP, OAuth, tunnel, and API readiness")
     subs.add_parser("status", help="Show non-secret WHOOP integration status")
     subs.add_parser("webhook-url", help="Print the v2 WHOOP webhook URL")
+    automations = subs.add_parser("automations", help="Manage WHOOP recap automations")
+    automations.add_argument(
+        "action", choices=("install", "status", "remove"), nargs="?", default="status"
+    )
     disconnect = subs.add_parser("disconnect", help="Revoke WHOOP access and remove local tokens")
     disconnect.add_argument("--yes", action="store_true", help="Skip confirmation")
     subparser.set_defaults(func=handle_cli)
@@ -205,5 +212,13 @@ def handle_cli(args) -> None:
         print(json.dumps({**_urls(), "model_version": "v2"}, indent=2))
     elif command == "disconnect":
         _disconnect(bool(args.yes))
+    elif command == "automations":
+        action = getattr(args, "action", "status")
+        result = {
+            "install": install_automations,
+            "status": automation_status,
+            "remove": remove_automations,
+        }[action]()
+        print(json.dumps(result, indent=2, default=str))
     else:
-        print("Usage: hermes whoop <setup|doctor|status|webhook-url|disconnect>")
+        print("Usage: hermes whoop <setup|doctor|status|webhook-url|automations|disconnect>")
