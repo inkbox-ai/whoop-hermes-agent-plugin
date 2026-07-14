@@ -21,6 +21,12 @@ optional_env:
   - name: WHOOP_TIMEZONE
     description: IANA timezone used for quiet hours and daily summaries.
     secret: false
+  - name: WHOOP_QUIET_HOURS_START
+    description: Local 24-hour start time for automatic outreach suppression.
+    secret: false
+  - name: WHOOP_QUIET_HOURS_END
+    description: Local 24-hour end time for automatic outreach suppression.
+    secret: false
 provides_tools:
   - whoop_get_profile
   - whoop_get_body_measurements
@@ -38,4 +44,3 @@ provides_tools:
   - whoop_summarize_period
   - whoop_compare_workouts
   - whoop_process_event
-

@@ -30,7 +30,7 @@ providers and tunnel callback routes, then:
 ```bash
 hermes plugins install inkbox-ai/whoop-hermes-agent-plugin --enable
 hermes gateway restart
-hermes whoop setup --import-env /path/to/existing/.env
+hermes whoop setup --import-env /path/to/existing/.env --home-channel <conversation-id>
 hermes whoop doctor
 ```
 
@@ -92,4 +92,3 @@ agent-callable tool.
   explicitly configured escalation.
 
 This is an unofficial integration and is not affiliated with WHOOP.
-

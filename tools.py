@@ -6,6 +6,7 @@ import json
 import statistics
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
+from zoneinfo import ZoneInfo
 
 try:
     from .client import WhoopClient, WhoopError
@@ -208,6 +209,7 @@ def process_event(args: dict[str, Any]) -> Any:
     if trace_id and store.seen(trace_id):
         return {"duplicate": True, "event_type": event_type, "resource_id": resource_id}
 
+    version = ""
     if event_type.endswith(".deleted"):
         result: dict[str, Any] = {
             "event_type": event_type,
@@ -217,6 +219,7 @@ def process_event(args: dict[str, Any]) -> Any:
         }
     elif event_type == "workout.updated":
         workout = WhoopClient().get(f"v2/activity/workout/{resource_id}")
+        version = str(workout.get("updated_at") or "")
         result = {
             "event_type": event_type,
             "resource_id": resource_id,
@@ -228,6 +231,7 @@ def process_event(args: dict[str, Any]) -> Any:
         }
     elif event_type == "sleep.updated":
         sleep = WhoopClient().get(f"v2/activity/sleep/{resource_id}")
+        version = str(sleep.get("updated_at") or "")
         result = {
             "event_type": event_type,
             "resource_id": resource_id,
@@ -240,6 +244,7 @@ def process_event(args: dict[str, Any]) -> Any:
         recoveries = WhoopClient().collection("v2/recovery", limit=25)["records"]
         recovery = next((row for row in recoveries if str(row.get("sleep_id")) == resource_id), None)
         sleep = WhoopClient().get(f"v2/activity/sleep/{resource_id}")
+        version = str((recovery or {}).get("updated_at") or sleep.get("updated_at") or "")
         result = {
             "event_type": event_type,
             "resource_id": resource_id,
@@ -250,6 +255,31 @@ def process_event(args: dict[str, Any]) -> Any:
                 "sleep performance, sleep need, and a conservative training suggestion."
             ),
         }
+    if version and store.seen_version(event_type, resource_id, version):
+        store.mark(trace_id, event_type, resource_id)
+        return {
+            "duplicate": True,
+            "event_type": event_type,
+            "resource_id": resource_id,
+            "reason": "This resource version was already processed.",
+        }
+    cfg = read_config()
+    try:
+        local_now = datetime.now(ZoneInfo(cfg.timezone))
+    except Exception:
+        local_now = datetime.now(timezone.utc)
+    current = local_now.strftime("%H:%M")
+    start, end = cfg.quiet_hours_start, cfg.quiet_hours_end
+    in_quiet_hours = (current >= start or current < end) if start > end else start <= current < end
+    result["outreach_policy"] = {
+        "home_channel": cfg.home_channel or None,
+        "timezone": cfg.timezone,
+        "quiet_hours": {"start": start, "end": end},
+        "currently_quiet": in_quiet_hours,
+        "may_message_now": bool(cfg.home_channel and not in_quiet_hours),
+        "may_call_from_webhook": False,
+    }
+    store.mark_version(event_type, resource_id, version)
     store.mark(trace_id, event_type, resource_id)
     return result
 

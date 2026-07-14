@@ -49,6 +49,8 @@ class WhoopConfig:
     token_url: str
     home_channel: str
     timezone: str
+    quiet_hours_start: str
+    quiet_hours_end: str
     state_dir: Path
 
     @property
@@ -68,6 +70,8 @@ def read_config() -> WhoopConfig:
         token_url=env_value("WHOOP_TOKEN_URL", DEFAULT_TOKEN_URL),
         home_channel=env_value("WHOOP_HOME_CHANNEL") or env_value("INKBOX_HOME_CHANNEL"),
         timezone=env_value("WHOOP_TIMEZONE", "America/Los_Angeles"),
+        quiet_hours_start=env_value("WHOOP_QUIET_HOURS_START", "23:00"),
+        quiet_hours_end=env_value("WHOOP_QUIET_HOURS_END", "07:00"),
         state_dir=state_dir,
     )
 

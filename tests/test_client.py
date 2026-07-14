@@ -18,6 +18,8 @@ def _config(tmp_path: Path) -> WhoopConfig:
         token_url="https://api.example/token",
         home_channel="contact",
         timezone="UTC",
+        quiet_hours_start="23:00",
+        quiet_hours_end="07:00",
         state_dir=tmp_path / "whoop",
     )
 

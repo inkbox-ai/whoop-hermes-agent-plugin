@@ -20,7 +20,17 @@ def test_process_workout_event_is_idempotent(monkeypatch, tmp_path):
     monkeypatch.setattr(
         tools,
         "read_config",
-        lambda: type("Config", (), {"state_dir": tmp_path / "whoop"})(),
+        lambda: type(
+            "Config",
+            (),
+            {
+                "state_dir": tmp_path / "whoop",
+                "timezone": "UTC",
+                "quiet_hours_start": "23:00",
+                "quiet_hours_end": "07:00",
+                "home_channel": "conversation-1",
+            },
+        )(),
     )
     event = {"event_type": "workout.updated", "resource_id": "workout-1", "trace_id": "trace-1"}
 
@@ -36,13 +46,24 @@ def test_process_recovery_joins_on_sleep_uuid(monkeypatch, tmp_path):
     monkeypatch.setattr(
         tools,
         "read_config",
-        lambda: type("Config", (), {"state_dir": tmp_path / "whoop"})(),
+        lambda: type(
+            "Config",
+            (),
+            {
+                "state_dir": tmp_path / "whoop",
+                "timezone": "UTC",
+                "quiet_hours_start": "23:00",
+                "quiet_hours_end": "07:00",
+                "home_channel": "conversation-1",
+            },
+        )(),
     )
     result = tools.process_event(
         {"event_type": "recovery.updated", "resource_id": "sleep-1", "trace_id": "trace-2"}
     )
     assert result["recovery"]["score"]["recovery_score"] == 80
     assert result["sleep"]["id"] == "sleep-1"
+    assert result["outreach_policy"]["may_call_from_webhook"] is False
 
 
 def test_all_manifest_tools_are_registered():

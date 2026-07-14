@@ -140,6 +140,7 @@ def setup_argparse(subparser) -> None:
     subs = subparser.add_subparsers(dest="whoop_command")
     setup = subs.add_parser("setup", help="Import credentials or start WHOOP OAuth")
     setup.add_argument("--import-env", type=Path, help="Import existing WHOOP values from an env file")
+    setup.add_argument("--home-channel", help="Inkbox contact or iMessage conversation for outreach")
     setup.add_argument("--no-browser", action="store_true", help="Print the OAuth URL without opening it")
     subs.add_parser("doctor", help="Validate WHOOP, OAuth, tunnel, and API readiness")
     subs.add_parser("status", help="Show non-secret WHOOP integration status")
@@ -154,9 +155,11 @@ def _setup(args) -> None:
         if not args.import_env.exists():
             raise SystemExit(f"Import file does not exist: {args.import_env}")
         _import_existing(args.import_env)
+    if args.home_channel:
+        _save_env("WHOOP_HOME_CHANNEL", str(args.home_channel).strip())
     urls = _urls()
     cfg = read_config()
-    if urls["redirect_uri"] and not cfg.redirect_uri:
+    if urls["redirect_uri"] and cfg.redirect_uri != urls["redirect_uri"]:
         _save_env("WHOOP_REDIRECT_URI", urls["redirect_uri"])
         cfg = read_config()
     if cfg.client_secret:

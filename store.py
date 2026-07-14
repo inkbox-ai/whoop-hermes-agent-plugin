@@ -92,6 +92,11 @@ class EventStore:
                 "trace_id TEXT PRIMARY KEY, event_type TEXT NOT NULL, resource_id TEXT NOT NULL, "
                 "processed_at REAL NOT NULL)"
             )
+            db.execute(
+                "CREATE TABLE IF NOT EXISTS resource_versions ("
+                "event_type TEXT NOT NULL, resource_id TEXT NOT NULL, version TEXT NOT NULL, "
+                "processed_at REAL NOT NULL, PRIMARY KEY(event_type, resource_id, version))"
+            )
 
     def _connect(self) -> sqlite3.Connection:
         db = sqlite3.connect(self.path, timeout=5)
@@ -117,3 +122,27 @@ class EventStore:
                 (trace_id, event_type, resource_id, time.time()),
             )
             db.execute("DELETE FROM events WHERE processed_at < ?", (time.time() - 30 * 86400,))
+
+    def seen_version(self, event_type: str, resource_id: str, version: str) -> bool:
+        if not version:
+            return False
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT 1 FROM resource_versions WHERE event_type=? AND resource_id=? AND version=?",
+                (event_type, resource_id, version),
+            ).fetchone()
+        return row is not None
+
+    def mark_version(self, event_type: str, resource_id: str, version: str) -> None:
+        if not version:
+            return
+        with self._connect() as db:
+            db.execute(
+                "INSERT OR IGNORE INTO resource_versions(event_type,resource_id,version,processed_at) "
+                "VALUES(?,?,?,?)",
+                (event_type, resource_id, version, time.time()),
+            )
+            db.execute(
+                "DELETE FROM resource_versions WHERE processed_at < ?",
+                (time.time() - 90 * 86400,),
+            )
