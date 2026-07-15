@@ -55,13 +55,6 @@ Before starting, each developer needs:
 - Python and Git as installed/managed by the Hermes installer.
 - A model provider configured in Hermes. Webhook coaching wakes a Hermes agent;
   the nightly visual cron itself does not use a model.
-- Access to this private GitHub repository. Authenticate Git before installing:
-
-  ```bash
-  gh auth login
-  gh auth setup-git
-  ```
-
 - An Inkbox account/API key, or an email address for the Inkbox setup wizard's
   self-signup flow. No pre-existing Inkbox identity is required.
 - A WHOOP membership and WHOOP account. WHOOP requires a membership to create a
